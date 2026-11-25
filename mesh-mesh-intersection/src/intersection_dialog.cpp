@@ -15,6 +15,7 @@
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QPushButton>
 #include <QTimer>
@@ -53,6 +54,7 @@ IntersectionDialog::IntersectionDialog(QWidget* parent) : QDialog(parent)
 {
     projectClosing_ = false;
     setWindowTitle(QStringLiteral("网格面面求交"));
+    setWindowIcon(QIcon(QStringLiteral(":/mesh-mesh-intersection/ribbon_icon.svg")));
     setAttribute(Qt::WA_DeleteOnClose);
     setModal(false); // 模型视图需要保持可拾取。
     resize(560, 0);

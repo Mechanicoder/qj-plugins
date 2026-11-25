@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/mesh-mesh-intersection">
+        <file alias="ribbon_icon.svg">resources/ribbon_icon.svg</file>
+    </qresource>
+</RCC>

@@ -3,6 +3,7 @@
 #include <qjcam_api.h>
 
 #include <QAction>
+#include <QIcon>
 #include <QPointer>
 
 // QJCAM 通过 C 导出名发现插件入口。
@@ -40,7 +41,8 @@ QJCAM_PLUGIN_EXPORT bool InitPlugin(const char* pluginId)
     }
     auto* page = qjcam::UI_AddRibbonPage(QStringLiteral("网格求交"));
     auto* group = qjcam::UI_AddRibbonGroup(QStringLiteral("算法验证"), page);
-    action = new QAction(QStringLiteral("网格求交验证"), mainWindow);
+    action = new QAction(QIcon(QStringLiteral(":/mesh-mesh-intersection/ribbon_icon.svg")),
+                         QStringLiteral("网格求交验证"), mainWindow);
     QObject::connect(action.data(), &QAction::triggered, action.data(), [mainWindow]() {
         if (!dialog) {
             dialog = new mmi::IntersectionDialog(mainWindow);
@@ -49,7 +51,7 @@ QJCAM_PLUGIN_EXPORT bool InitPlugin(const char* pluginId)
         dialog->raise();
         dialog->activateWindow();
     });
-    qjcam::UI_AddRibbonAction(action.data(), group, Qt::ToolButtonTextOnly);
+    qjcam::UI_AddRibbonAction(action.data(), group, Qt::ToolButtonTextUnderIcon);
     qjcam::QJ_OutputMessage("mesh-mesh-intersection: mesh face intersection loaded.");
     return true;
 }
