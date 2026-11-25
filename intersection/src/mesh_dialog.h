@@ -14,11 +14,11 @@ class QTimer;
 
 namespace mmi {
 
-class IntersectionDialog final : public QDialog
+class MeshIntersectionDialog final : public QDialog
 {
 public:
-    explicit IntersectionDialog(QWidget* parent);
-    ~IntersectionDialog() override;
+    explicit MeshIntersectionDialog(QWidget* parent);
+    ~MeshIntersectionDialog() override;
 
     // 工程即将关闭时，宿主会先释放模型树中的形状，此时不能删除结果节点。
     static void setProjectClosing(bool closing);

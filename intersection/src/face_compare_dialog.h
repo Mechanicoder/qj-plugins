@@ -9,9 +9,9 @@ class QLineEdit;
 
 namespace ffi {
 
-class IntersectionDialog final : public QDialog {
+class FaceCompareDialog final : public QDialog {
 public:
-    explicit IntersectionDialog(QWidget* parent);
+    explicit FaceCompareDialog(QWidget* parent);
 
 private:
     void run();

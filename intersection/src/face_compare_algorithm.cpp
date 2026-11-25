@@ -1,4 +1,4 @@
-#include "intersection_algorithm.h"
+#include "face_compare_algorithm.h"
 
 #include <cmath>
 #include <memory>
@@ -19,7 +19,8 @@ IntersectionResult intersectFaces(const IntersectionRequest& request)
 {
     if (request.first.IsNull() || request.second.IsNull()
         || request.first.IsSame(request.second)
-        || !std::isfinite(request.tolerance) || request.tolerance <= 0.0) {
+        || !std::isfinite(request.tolerance) || request.tolerance <= 0.0
+        || !std::isfinite(request.angleTolerance) || request.angleTolerance <= 0.0) {
         return {IntersectionStatus::InvalidInput, {}, "请选择两个不同的有效面，并设置正容差。"};
     }
     const auto start = std::chrono::steady_clock::now();
@@ -46,7 +47,7 @@ IntersectionResult intersectFaces(const IntersectionRequest& request)
         ~Curves() { for (ULONG i = 0; i < values.GetSize(); ++i) delete values[i]; }
     } curves(context);
     SmTArray<SmPoint3d> points(context);
-    constexpr double angleToleranceDegrees = 20.0; // SDK-recommended default.
+    const double angleToleranceDegrees = request.angleTolerance;
     const auto kernelStart = std::chrono::steady_clock::now();
     const auto status = facesA[0]->FaceIntersect(context, facesB[0], request.tolerance,
         angleToleranceDegrees, curves.values, nullptr, nullptr, &points);

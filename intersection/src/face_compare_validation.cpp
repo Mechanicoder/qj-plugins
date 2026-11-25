@@ -1,4 +1,4 @@
-#include "validation.h"
+#include "face_compare_validation.h"
 #include <BRepAlgoAPI_Section.hxx>
 #include <BRep_Builder.hxx>
 #include <BRepTools.hxx>

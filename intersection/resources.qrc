@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/intersection">
+        <file alias="face_face.svg">resources/face_face.svg</file>
+        <file alias="face_compare.svg">resources/face_compare.svg</file>
+        <file alias="mesh.svg">resources/mesh.svg</file>
+    </qresource>
+</RCC>

@@ -11,6 +11,7 @@ struct IntersectionRequest {
     TopoDS_Face first;
     TopoDS_Face second;
     double tolerance = 1.0e-6; // Model length units.
+    double angleTolerance = 20.0; // Degrees, SMLib FaceIntersect.
 };
 
 enum class IntersectionStatus { NotImplemented, Success, InvalidInput, Failed };

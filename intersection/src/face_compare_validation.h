@@ -1,5 +1,5 @@
 #pragma once
-#include "intersection_algorithm.h"
+#include "face_compare_algorithm.h"
 #include <QString>
 #include <functional>
 

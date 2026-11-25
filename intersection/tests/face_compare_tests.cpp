@@ -1,4 +1,4 @@
-#include "validation.h"
+#include "face_compare_validation.h"
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>

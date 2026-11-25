@@ -26,9 +26,9 @@ include(QjcamSDK)
 include(QjcamPlugin)
 
 # Keep registration explicit: unrelated directories will never become plugins by accident.
-option(QJCAM_BUILD_FACE_FACE_INTERSECTION "Build face-face-intersection" ON)
-if(QJCAM_BUILD_FACE_FACE_INTERSECTION)
-    add_subdirectory(face-face-intersection)
+option(QJCAM_BUILD_INTERSECTION "Build intersection (face-face and mesh)" ON)
+if(QJCAM_BUILD_INTERSECTION)
+    add_subdirectory(intersection)
 endif()
 
 option(QJCAM_BUILD_CURVE_FACE_INTERSECTION "Build curve-face-intersection" ON)
@@ -39,9 +39,4 @@ endif()
 option(QJCAM_BUILD_XYZ_DRAW "Build xyz-draw" ON)
 if(QJCAM_BUILD_XYZ_DRAW)
     add_subdirectory(xyz-draw)
-endif()
-
-option(QJCAM_BUILD_MESH_MESH_INTERSECTION "Build mesh-mesh-intersection" ON)
-if(QJCAM_BUILD_MESH_MESH_INTERSECTION)
-    add_subdirectory(mesh-mesh-intersection)
 endif()

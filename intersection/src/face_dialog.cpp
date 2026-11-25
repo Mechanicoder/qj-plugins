@@ -1,4 +1,4 @@
-#include "intersection_dialog.h"
+#include "face_dialog.h"
 
 #include <selector/model_selector.h>
 
@@ -21,17 +21,13 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
-#include <algorithm>
 #include <cmath>
 #include <exception>
-#include <numeric>
 
-namespace mmi {
+namespace sfi {
 namespace {
 
-constexpr double kPi = 3.14159265358979323846;
-// 位移小于该值时不显示移动面副本，避免与原面完全重合闪烁。
-constexpr double kPreviewEpsilon = 1e-12;
+constexpr double kOffsetEpsilon = 1e-12;
 
 QDoubleSpinBox* makeSpin(QWidget* parent, double minimum, double maximum, int decimals,
                          double step, double value, const QString& suffix = QString())
@@ -48,19 +44,19 @@ QDoubleSpinBox* makeSpin(QWidget* parent, double minimum, double maximum, int de
 
 } // namespace
 
-bool IntersectionDialog::projectClosing_ = false;
+bool FaceIntersectionDialog::projectClosing_ = false;
 
-IntersectionDialog::IntersectionDialog(QWidget* parent) : QDialog(parent)
+FaceIntersectionDialog::FaceIntersectionDialog(QWidget* parent) : QDialog(parent)
 {
     projectClosing_ = false;
-    setWindowTitle(QStringLiteral("网格面面求交"));
-    setWindowIcon(QIcon(QStringLiteral(":/mesh-mesh-intersection/ribbon_icon.svg")));
+    setWindowTitle(QStringLiteral("面面求交"));
+    setWindowIcon(QIcon(QStringLiteral(":/intersection/face_face.svg")));
     setAttribute(Qt::WA_DeleteOnClose);
     setModal(false); // 模型视图需要保持可拾取。
     resize(560, 0);
 
     auto* layout = new QVBoxLayout(this);
-    auto* hint = new QLabel(QStringLiteral("面 A、面 B 均可多选，同一组面也可同时选入两侧；求交时按两组面逐对计算并合并交线。"
+    auto* hint = new QLabel(QStringLiteral("面 A、面 B 均可多选；使用 SMLib FaceIntersect 对两组面逐对求精确交线。"
                                            "求交后调整位移可实时刷新交线；交线与移动面副本显示在模型树中。"), this);
     hint->setWordWrap(true);
     layout->addWidget(hint);
@@ -74,18 +70,16 @@ IntersectionDialog::IntersectionDialog(QWidget* parent) : QDialog(parent)
     selectionForm->addRow(QStringLiteral("面 B（可多选）"), second_);
     layout->addWidget(selectionBox);
 
-    auto* tessellationBox = new QGroupBox(QStringLiteral("剖分与容差"), this);
-    auto* tessellationRow = new QHBoxLayout(tessellationBox);
-    tessellationRow->addWidget(new QLabel(QStringLiteral("弦高"), tessellationBox));
-    linear_ = makeSpin(tessellationBox, 1.0e-4, 10.0, 4, 0.01, 0.05);
-    tessellationRow->addWidget(linear_);
-    tessellationRow->addWidget(new QLabel(QStringLiteral("角度"), tessellationBox));
-    angular_ = makeSpin(tessellationBox, 1.0, 90.0, 1, 1.0, 20.0, QStringLiteral(" °"));
-    tessellationRow->addWidget(angular_);
-    tessellationRow->addWidget(new QLabel(QStringLiteral("距离容差"), tessellationBox));
-    tolerance_ = makeSpin(tessellationBox, 1.0e-12, 1.0, 9, 1.0e-6, 1.0e-6);
-    tessellationRow->addWidget(tolerance_);
-    layout->addWidget(tessellationBox);
+    auto* toleranceBox = new QGroupBox(QStringLiteral("容差"), this);
+    auto* toleranceRow = new QHBoxLayout(toleranceBox);
+    toleranceRow->addWidget(new QLabel(QStringLiteral("距离容差"), toleranceBox));
+    tolerance_ = makeSpin(toleranceBox, 1.0e-12, 1.0, 9, 1.0e-6, 1.0e-6);
+    toleranceRow->addWidget(tolerance_);
+    toleranceRow->addWidget(new QLabel(QStringLiteral("角度容差"), toleranceBox));
+    angle_ = makeSpin(toleranceBox, 1.0, 90.0, 1, 1.0, 20.0, QStringLiteral(" °"));
+    toleranceRow->addWidget(angle_);
+    toleranceRow->addStretch();
+    layout->addWidget(toleranceBox);
 
     auto* moveBox = new QGroupBox(QStringLiteral("移动面与实时求交"), this);
     auto* moveLayout = new QVBoxLayout(moveBox);
@@ -135,8 +129,8 @@ IntersectionDialog::IntersectionDialog(QWidget* parent) : QDialog(parent)
     updateTimer_->setInterval(30);
 
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(runButton, &QPushButton::clicked, this, &IntersectionDialog::run);
-    connect(clearButton, &QPushButton::clicked, this, &IntersectionDialog::reset);
+    connect(runButton, &QPushButton::clicked, this, &FaceIntersectionDialog::run);
+    connect(clearButton, &QPushButton::clicked, this, &FaceIntersectionDialog::reset);
     connect(resetMove, &QPushButton::clicked, this, [this] {
         suppressUpdates_ = true;
         translateX_->setValue(0.0);
@@ -145,34 +139,34 @@ IntersectionDialog::IntersectionDialog(QWidget* parent) : QDialog(parent)
         suppressUpdates_ = false;
         scheduleUpdate();
     });
-    connect(updateTimer_, &QTimer::timeout, this, &IntersectionDialog::run);
+    connect(updateTimer_, &QTimer::timeout, this, &FaceIntersectionDialog::run);
 
-    connect(first_, &qjcam::ModelSelector::ShapeChanged, this, &IntersectionDialog::invalidate);
-    connect(second_, &qjcam::ModelSelector::ShapeChanged, this, &IntersectionDialog::invalidate);
+    connect(first_, &qjcam::ModelSelector::ShapeChanged, this, &FaceIntersectionDialog::invalidate);
+    connect(second_, &qjcam::ModelSelector::ShapeChanged, this, &FaceIntersectionDialog::invalidate);
     connect(moveTarget_, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &IntersectionDialog::scheduleUpdate);
-    connect(realtime_, &QCheckBox::toggled, this, &IntersectionDialog::scheduleUpdate);
-    connect(showPreview_, &QCheckBox::toggled, this, &IntersectionDialog::scheduleUpdate);
-    for (QDoubleSpinBox* spin : {linear_, angular_, tolerance_, translateX_, translateY_, translateZ_}) {
+            this, &FaceIntersectionDialog::scheduleUpdate);
+    connect(realtime_, &QCheckBox::toggled, this, &FaceIntersectionDialog::scheduleUpdate);
+    connect(showPreview_, &QCheckBox::toggled, this, &FaceIntersectionDialog::scheduleUpdate);
+    for (QDoubleSpinBox* spin : {tolerance_, angle_, translateX_, translateY_, translateZ_}) {
         connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-                this, &IntersectionDialog::scheduleUpdate);
+                this, &FaceIntersectionDialog::scheduleUpdate);
     }
 
     setStatus(QStringLiteral("请选择面 A、面 B（可多选）后点击“求交”。"));
 }
 
-IntersectionDialog::~IntersectionDialog()
+FaceIntersectionDialog::~FaceIntersectionDialog()
 {
     if (updateTimer_) updateTimer_->stop();
     if (!projectClosing_) clearOutput();
 }
 
-void IntersectionDialog::setProjectClosing(bool closing)
+void FaceIntersectionDialog::setProjectClosing(bool closing)
 {
     projectClosing_ = closing;
 }
 
-bool IntersectionDialog::readFaces(std::vector<TopoDS_Face>& first, std::vector<TopoDS_Face>& second) const
+bool FaceIntersectionDialog::readFaces(std::vector<TopoDS_Face>& first, std::vector<TopoDS_Face>& second) const
 {
     first.clear();
     second.clear();
@@ -185,34 +179,33 @@ bool IntersectionDialog::readFaces(std::vector<TopoDS_Face>& first, std::vector<
     return !first.empty() && !second.empty();
 }
 
-bool IntersectionDialog::hasOffset() const
+bool FaceIntersectionDialog::hasOffset() const
 {
-    return std::abs(translateX_->value()) > kPreviewEpsilon
-        || std::abs(translateY_->value()) > kPreviewEpsilon
-        || std::abs(translateZ_->value()) > kPreviewEpsilon;
+    return std::abs(translateX_->value()) > kOffsetEpsilon
+        || std::abs(translateY_->value()) > kOffsetEpsilon
+        || std::abs(translateZ_->value()) > kOffsetEpsilon;
 }
 
-void IntersectionDialog::setStatus(const QString& text)
+void FaceIntersectionDialog::setStatus(const QString& text)
 {
     status_->setText(text);
 }
 
-void IntersectionDialog::invalidate()
+void FaceIntersectionDialog::invalidate()
 {
     updateTimer_->stop();
     clearOutput();
-    clear(meshes_);
+    clear(group_);
     setStatus(QStringLiteral("面已更改，请重新求交。"));
 }
 
-void IntersectionDialog::reset()
+void FaceIntersectionDialog::reset()
 {
     suppressUpdates_ = true;
     first_->Clear();
     second_->Clear();
-    linear_->setValue(0.05);
-    angular_->setValue(20.0);
     tolerance_->setValue(1.0e-6);
+    angle_->setValue(20.0);
     translateX_->setValue(0.0);
     translateY_->setValue(0.0);
     translateZ_->setValue(0.0);
@@ -222,14 +215,14 @@ void IntersectionDialog::reset()
     suppressUpdates_ = false;
     updateTimer_->stop();
     clearOutput();
-    clear(meshes_);
+    clear(group_);
     setStatus(QStringLiteral("请选择面 A、面 B（可多选）后点击“求交”。"));
 }
 
-void IntersectionDialog::scheduleUpdate()
+void FaceIntersectionDialog::scheduleUpdate()
 {
     if (suppressUpdates_) return;
-    if (!meshes_.ready) return;
+    if (!group_.ready) return;
     if (!realtime_->isChecked()) {
         updatePreview();
         qjcam::VI_UpdateView();
@@ -239,7 +232,7 @@ void IntersectionDialog::scheduleUpdate()
     updateTimer_->start();
 }
 
-void IntersectionDialog::run()
+void FaceIntersectionDialog::run()
 {
     if (suppressUpdates_) return;
     std::vector<TopoDS_Face> first;
@@ -250,44 +243,38 @@ void IntersectionDialog::run()
     }
 
     try {
-        const double linear = linear_->value();
-        const double angular = angular_->value() * kPi / 180.0;
-        if (!meshes_.ready || !sameFaceLists(meshes_.firstFaces, first)
-            || !sameFaceLists(meshes_.secondFaces, second)
-            || meshes_.linearDeflection != linear || meshes_.angularDeflection != angular) {
+        const double tolerance = tolerance_->value();
+        const double angle = angle_->value();
+        if (!group_.ready || !sameFaceLists(group_.firstFaces, first)
+            || !sameFaceLists(group_.secondFaces, second)
+            || group_.tolerance != tolerance || group_.angleTolerance != angle) {
             std::string error;
-            if (!tessellate(first, second, linear, angular, meshes_, error)) {
+            if (!prepare(first, second, tolerance, angle, group_, error)) {
                 clearOutput();
-                setStatus(QStringLiteral("剖分失败：%1").arg(QString::fromUtf8(error.c_str())));
+                setStatus(QStringLiteral("输入失败：%1").arg(QString::fromUtf8(error.c_str())));
                 return;
             }
         }
 
         updatePreview();
-        const auto result = intersect(meshes_, moveTarget_->currentIndex() == 1,
-                                      translateX_->value(), translateY_->value(), translateZ_->value(),
-                                      tolerance_->value());
-        updateResult(result.result);
+        const auto result = intersect(group_, moveTarget_->currentIndex() == 1,
+                                      translateX_->value(), translateY_->value(), translateZ_->value());
+        updateResult(result);
 
-        const auto closed = std::count_if(result.result.polylines.begin(), result.result.polylines.end(),
-                                          [](const mesh_inter::MeshPolyline& line) { return line.closed; });
-        const auto points = std::accumulate(result.result.polylines.begin(), result.result.polylines.end(),
-                                            std::size_t{0}, [](std::size_t sum, const mesh_inter::MeshPolyline& line) {
-                                                return sum + line.points.size();
-                                            });
-        QString text = QStringLiteral("面 A %1 个 / 面 B %2 个；交线：%3 条折线（闭合 %4），%5 段，%6 个顶点；%7 ms。网格 %8/%9 个三角形。")
-            .arg(static_cast<int>(meshes_.firstFaces.size()))
-            .arg(static_cast<int>(meshes_.secondFaces.size()))
-            .arg(static_cast<int>(result.result.polylines.size()))
-            .arg(static_cast<int>(closed))
-            .arg(static_cast<int>(result.result.segments.size()))
-            .arg(static_cast<qulonglong>(points))
-            .arg(result.milliseconds, 0, 'f', 1)
-            .arg(static_cast<qulonglong>(triangleCount(meshes_.firstMeshes)))
-            .arg(static_cast<qulonglong>(triangleCount(meshes_.secondMeshes)));
-        if (result.result.polylines.empty()) text += QStringLiteral(" 当前两组面无交线。");
-        if (!resultNode_ && !result.result.polylines.empty())
-            text += QStringLiteral(" 交线输出失败（请确认已打开工程）。");
+        QString text = QStringLiteral("面 A %1 个 / 面 B %2 个；交线：%3 条边，%4 个顶点；"
+                                      "成功配对 %5，失败 %6，跳过 %7；总耗时 %8 ms（内核 %9 ms）。")
+            .arg(static_cast<int>(group_.firstFaces.size()))
+            .arg(static_cast<int>(group_.secondFaces.size()))
+            .arg(result.edges)
+            .arg(result.vertices)
+            .arg(result.succeededPairs)
+            .arg(result.failedPairs)
+            .arg(result.skippedPairs)
+            .arg(result.totalMilliseconds, 0, 'f', 1)
+            .arg(result.kernelMilliseconds, 0, 'f', 1);
+        if (result.edges == 0 && result.vertices == 0) text += QStringLiteral(" 当前两组面无交线。");
+        if (result.failedPairs > 0 && !result.message.empty())
+            text += QStringLiteral(" 失败原因：%1").arg(QString::fromUtf8(result.message.c_str()));
         setStatus(text);
         qjcam::VI_UpdateView();
     } catch (const Standard_Failure& error) {
@@ -299,13 +286,13 @@ void IntersectionDialog::run()
     }
 }
 
-void IntersectionDialog::updatePreview()
+void FaceIntersectionDialog::updatePreview()
 {
-    if (!showPreview_->isChecked() || !meshes_.ready || !hasOffset()) {
+    if (!showPreview_->isChecked() || !group_.ready || !hasOffset()) {
         removePreview();
         return;
     }
-    const TopoDS_Shape& base = moveTarget_->currentIndex() == 1 ? meshes_.secondCompound : meshes_.firstCompound;
+    const TopoDS_Shape& base = moveTarget_->currentIndex() == 1 ? group_.secondCompound : group_.firstCompound;
     if (base.IsNull()) {
         removePreview();
         return;
@@ -314,46 +301,45 @@ void IntersectionDialog::updatePreview()
     translation.SetTranslation(gp_Vec(translateX_->value(), translateY_->value(), translateZ_->value()));
     const TopoDS_Shape moved = BRepBuilderAPI_Transform(base, translation, Standard_False).Shape();
     if (previewNode_ && !qjcam::MO_SetShape(previewNode_, moved)) previewNode_ = nullptr;
-    if (!previewNode_) previewNode_ = qjcam::MO_AddShape("网格求交 / 移动面", moved);
+    if (!previewNode_) previewNode_ = qjcam::MO_AddShape("面面求交 / 移动面", moved);
     if (previewNode_) {
         qjcam::MO_SetShapeColor(previewNode_, 0x3399ff);
         qjcam::MO_SetShapeTransparency(previewNode_, 0.4);
     }
 }
 
-void IntersectionDialog::updateResult(const mesh_inter::MeshIntersectResult& result)
+void FaceIntersectionDialog::updateResult(const FaceIntersectionRun& result)
 {
-    if (result.polylines.empty()) {
+    if (result.shape.IsNull()) {
         removeResult();
         return;
     }
-    const TopoDS_Shape shape = polylinesShape(result.polylines);
-    if (resultNode_ && !qjcam::MO_SetShape(resultNode_, shape)) resultNode_ = nullptr;
-    if (!resultNode_) resultNode_ = qjcam::MO_AddShape("网格求交 / 交线", shape);
+    if (resultNode_ && !qjcam::MO_SetShape(resultNode_, result.shape)) resultNode_ = nullptr;
+    if (!resultNode_) resultNode_ = qjcam::MO_AddShape("面面求交 / 交线", result.shape);
     if (resultNode_) {
         qjcam::MO_SetShapeColor(resultNode_, 0xff8800);
         qjcam::MO_SetShapeTransparency(resultNode_, 0.0);
     }
 }
 
-void IntersectionDialog::removePreview()
+void FaceIntersectionDialog::removePreview()
 {
     if (!previewNode_) return;
     qjcam::MO_DeleteModel(previewNode_);
     previewNode_ = nullptr;
 }
 
-void IntersectionDialog::removeResult()
+void FaceIntersectionDialog::removeResult()
 {
     if (!resultNode_) return;
     qjcam::MO_DeleteModel(resultNode_);
     resultNode_ = nullptr;
 }
 
-void IntersectionDialog::clearOutput()
+void FaceIntersectionDialog::clearOutput()
 {
     removePreview();
     removeResult();
 }
 
-} // namespace mmi
+} // namespace sfi

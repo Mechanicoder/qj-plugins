@@ -1,6 +1,6 @@
-#include "intersection_dialog.h"
-#include "intersection_algorithm.h"
-#include "validation.h"
+#include "face_compare_dialog.h"
+#include "face_compare_algorithm.h"
+#include "face_compare_validation.h"
 
 #include <qjcam_api.h>
 #include <selector/model_selector.h>
@@ -13,6 +13,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLineEdit>
 #include <QFileDialog>
 #include <QDir>
@@ -41,15 +42,16 @@ QString publish(const ValidationReport& report, const QString& label)
 
 void showReport(QWidget* parent, const QString& summary, const QString& details)
 {
-    QMessageBox box(QMessageBox::Information, QStringLiteral("面面求交验证报告"), summary, QMessageBox::Ok, parent);
+    QMessageBox box(QMessageBox::Information, QStringLiteral("面面求交对比测试报告"), summary, QMessageBox::Ok, parent);
     box.setDetailedText(details);
     box.exec();
 }
 }
 
-IntersectionDialog::IntersectionDialog(QWidget* parent) : QDialog(parent)
+FaceCompareDialog::FaceCompareDialog(QWidget* parent) : QDialog(parent)
 {
-    setWindowTitle(QStringLiteral("面面求交验证"));
+    setWindowTitle(QStringLiteral("面面求交对比测试"));
+    setWindowIcon(QIcon(QStringLiteral(":/intersection/face_compare.svg")));
     setAttribute(Qt::WA_DeleteOnClose);
     setModal(false); // The model view must remain available for picking.
     resize(520, 260);
@@ -71,7 +73,7 @@ IntersectionDialog::IntersectionDialog(QWidget* parent) : QDialog(parent)
         const auto directory = QFileDialog::getExistingDirectory(this, QStringLiteral("选择测例根目录"), caseRoot_->text());
         if (!directory.isEmpty()) caseRoot_->setText(directory);
     });
-    connect(batch, &QPushButton::clicked, this, &IntersectionDialog::runBatch);
+    connect(batch, &QPushButton::clicked, this, &FaceCompareDialog::runBatch);
     auto* form = new QFormLayout;
     using Pickup = qjcam::ModelSelector::PickupType;
     first_ = new qjcam::ModelSelector(this, Pickup::PT_PickupFace, 1);
@@ -94,20 +96,20 @@ IntersectionDialog::IntersectionDialog(QWidget* parent) : QDialog(parent)
     auto* resetButton = buttons->addButton(QStringLiteral("重置"), QDialogButtonBox::ResetRole);
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(runButton, &QPushButton::clicked, this, &IntersectionDialog::run);
-    connect(resetButton, &QPushButton::clicked, this, &IntersectionDialog::reset);
-    connect(first_, &qjcam::ModelSelector::ShapeChanged, this, &IntersectionDialog::invalidateResult);
-    connect(second_, &qjcam::ModelSelector::ShapeChanged, this, &IntersectionDialog::invalidateResult);
-    connect(tolerance_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &IntersectionDialog::invalidateResult);
+    connect(runButton, &QPushButton::clicked, this, &FaceCompareDialog::run);
+    connect(resetButton, &QPushButton::clicked, this, &FaceCompareDialog::reset);
+    connect(first_, &qjcam::ModelSelector::ShapeChanged, this, &FaceCompareDialog::invalidateResult);
+    connect(second_, &qjcam::ModelSelector::ShapeChanged, this, &FaceCompareDialog::invalidateResult);
+    connect(tolerance_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &FaceCompareDialog::invalidateResult);
     invalidateResult();
 }
 
-void IntersectionDialog::invalidateResult()
+void FaceCompareDialog::invalidateResult()
 {
     result_->setText(QStringLiteral("等待验证。"));
 }
 
-void IntersectionDialog::reset()
+void FaceCompareDialog::reset()
 {
     first_->Clear();
     second_->Clear();
@@ -115,7 +117,7 @@ void IntersectionDialog::reset()
     invalidateResult();
 }
 
-void IntersectionDialog::run()
+void FaceCompareDialog::run()
 {
     try {
         const auto first = first_->GetSelectedModels();
@@ -142,7 +144,7 @@ void IntersectionDialog::run()
     }
 }
 
-void IntersectionDialog::runBatch()
+void FaceCompareDialog::runBatch()
 {
     const QDir root(caseRoot_->text().trimmed());
     if (caseRoot_->text().trimmed().isEmpty() || !root.exists()) {
@@ -156,7 +158,7 @@ void IntersectionDialog::runBatch()
     }
     const double tolerance = tolerance_->value();
     const auto batchId = QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss-zzz");
-    QPointer<IntersectionDialog> guard(this);
+    QPointer<FaceCompareDialog> guard(this);
     // No parent: a project-closing notifier may destroy this dialog while
     // setValue processes Qt events. Keep the progress object's lifetime local.
     QProgressDialog progress(QStringLiteral("读取并验证测例…"), QStringLiteral("取消后续测例"), 0, directories.size(), nullptr);
