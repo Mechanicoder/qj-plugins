@@ -1,0 +1,43 @@
+include_guard(GLOBAL)
+
+set(_qjcam_default_root "$ENV{QJCAM_ROOT}")
+set(_qjcam_install_path_file "${CMAKE_CURRENT_LIST_DIR}/../install-path.txt")
+if(EXISTS "${_qjcam_install_path_file}")
+    file(READ "${_qjcam_install_path_file}" _qjcam_default_root)
+    string(STRIP "${_qjcam_default_root}" _qjcam_default_root)
+    if(NOT _qjcam_default_root OR _qjcam_default_root MATCHES "[\r\n]")
+        message(FATAL_ERROR "install-path.txt must contain one non-empty installation path.")
+    endif()
+    # Accept paths written by either Windows editors or UTF-8 tools.
+    file(TO_CMAKE_PATH "${_qjcam_default_root}" _qjcam_default_root)
+endif()
+set(QJCAM_ROOT "${_qjcam_default_root}" CACHE PATH "QJCAM installation directory containing api/ and plugins/")
+if(NOT QJCAM_ROOT)
+    message(FATAL_ERROR "Set install-path.txt, -DQJCAM_ROOT=<QJCAM installation directory>, or the QJCAM_ROOT environment variable.")
+endif()
+set(QJCAM_API_DIR "${QJCAM_ROOT}/api" CACHE PATH "QJCAM API directory")
+set(QJCAM_OCC_DIR "${QJCAM_API_DIR}/opencascade-7.9.2" CACHE PATH "Matching OpenCascade SDK")
+set(QJCAM_QT_DIR "${QJCAM_API_DIR}/Qt5.15.2/5.15.2/msvc2019_64" CACHE PATH "Matching Qt SDK")
+foreach(required IN ITEMS "${QJCAM_API_DIR}/qjcam_api.h" "${QJCAM_API_DIR}/qjcam_api.lib"
+        "${QJCAM_OCC_DIR}/inc/TopoDS_Face.hxx" "${QJCAM_OCC_DIR}/lib/TKernel.lib"
+        "${QJCAM_QT_DIR}/lib/cmake/Qt5/Qt5Config.cmake")
+    if(NOT EXISTS "${required}")
+        message(FATAL_ERROR "Missing QJCAM SDK file: ${required}")
+    endif()
+endforeach()
+
+# Resolve Qt from the host SDK, not from another Qt installation on PATH.
+set(Qt5_DIR "${QJCAM_QT_DIR}/lib/cmake/Qt5")
+find_package(Qt5 5.15.2 EXACT REQUIRED COMPONENTS Widgets Gui Core PATHS "${Qt5_DIR}" NO_DEFAULT_PATH)
+add_library(QjcamSDK INTERFACE)
+add_library(Qjcam::SDK ALIAS QjcamSDK)
+target_include_directories(QjcamSDK INTERFACE "${QJCAM_API_DIR}")
+target_include_directories(QjcamSDK SYSTEM INTERFACE "${QJCAM_OCC_DIR}/inc")
+target_link_libraries(QjcamSDK INTERFACE "${QJCAM_API_DIR}/qjcam_api.lib" Qt5::Widgets Qt5::Gui)
+# qjcam_api.h also exposes OCC visualization types with inline constructors.
+foreach(lib IN ITEMS TKernel TKMath TKService TKV3d)
+    if(NOT EXISTS "${QJCAM_OCC_DIR}/lib/${lib}.lib")
+        message(FATAL_ERROR "Missing QJCAM API dependency: ${lib}.lib")
+    endif()
+    target_link_libraries(QjcamSDK INTERFACE "${QJCAM_OCC_DIR}/lib/${lib}.lib")
+endforeach()
