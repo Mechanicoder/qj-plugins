@@ -17,11 +17,11 @@ build/                         CMake 工程及编译中间文件（不纳入版�
 
 需要 Windows x64、CMake 3.22+、Visual Studio C++ 工具链。包含目录和依赖库来自 `<安装路径>/api`，使用其中的 Qt 5.15.2 和 OpenCascade 7.9.2。支持 Release、RelWithDebInfo，均使用 `/MD`；Debug 与宿主 ABI 不兼容。
 
-求交插件还依赖 `3rdparty` 下的 OccSmBridge 和 SMLib：桥接库随项目基于宿主 OCC 从源码编译，SMLib/TBB 运行 DLL 自动部署至插件目录。
+求交插件依赖 `3rdparty/OccSmBridge-2.0.0-win64-msvc-release` 与 SoulCAD `kernels/smlib`。预编译桥接库按 OCCT 8.0.0 构建，与宿主 7.9.2 的 ABI 不匹配，因此构建时使用包内 `source/` 基于宿主 OCC 重新编译；SMLib/TBB/jemalloc 运行 DLL 自动部署至插件目录。SoulCAD 为私有仓库，配置时由 CMake FetchContent 按固定提交 `20a8876` 拉取，需要本机 GitHub 凭据；也可用 `-DQJCAM_SOULCAD_SOURCE_DIR=<本地 SoulCAD 路径>` 跳过拉取。
 
 「求交」Ribbon 页包含三条命令：
 
-- 面面求交：两组面均可多选，基于 SMLib `FaceIntersect`（参考 SoulCAD `kernels/smlib/intersect_face_face.h`）逐对求精确交线；移动整组面时实时刷新交线，交线与移动面副本显示在模型树中。
+- 面面求交：两组面均可多选，调用 SoulCAD `sm::IntersectFaceFace`（`kernels/smlib/intersect_face_face.h`）逐对求精确交线；移动整组面时实时刷新交线，交线与移动面副本显示在模型树中。
 - 面面求交对比测试：单次或批量对比 OCC 与 SMLib 的面面求交结果（质量与耗时）。
 - 网格求交：复用 `mesh_inter.h`，两组面逐对做三角网格求交并合并折线，支持移动整组面实时刷新。
 

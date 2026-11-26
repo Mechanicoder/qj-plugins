@@ -1,16 +1,15 @@
 #include "face_realtime.h"
 
-#include "face_compare_algorithm.h"
+#include <intersect_face_face.h>
 
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRep_Builder.hxx>
-#include <TopExp.hxx>
-#include <TopTools_IndexedMapOfShape.hxx>
 #include <TopoDS.hxx>
 #include <TopoDS_Compound.hxx>
 #include <gp_Trsf.hxx>
 #include <gp_Vec.hxx>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 
@@ -115,6 +114,12 @@ FaceIntersectionRun intersect(const FaceGroup& group, bool moveSecond,
     BRep_Builder builder;
     builder.MakeCompound(compound);
 
+    sm::FaceIntersectionOptions options;
+    options.intersectionToleranceMm = group.tolerance;
+    options.simplificationToleranceMm = std::max(1.0e-6, group.tolerance * 10.0);
+    options.angleToleranceDegrees = group.angleTolerance;
+    options.simplifyCurves = true;
+
     const auto start = std::chrono::steady_clock::now();
     for (std::size_t i = 0; i < placed.size(); ++i) {
         for (std::size_t j = 0; j < other.size(); ++j) {
@@ -123,27 +128,25 @@ FaceIntersectionRun intersect(const FaceGroup& group, bool moveSecond,
                 ++run.skippedPairs;
                 continue;
             }
-            const ffi::IntersectionResult part = ffi::intersectFaces(
-                {placed[i], other[j], group.tolerance, group.angleTolerance});
-            if (part.status != ffi::IntersectionStatus::Success) {
+            const auto pairStart = std::chrono::steady_clock::now();
+            const sm::FaceIntersection part = sm::IntersectFaceFace(placed[i], other[j], options);
+            run.kernelMilliseconds += std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - pairStart).count();
+            if (!part.ok) {
                 ++run.failedPairs;
-                if (run.message.empty()) run.message = part.message;
+                if (run.message.empty()) run.message = part.error;
                 continue;
             }
             ++run.succeededPairs;
-            run.kernelMilliseconds += part.kernelMilliseconds;
-            for (const TopoDS_Shape& shape : part.curves)
-                if (!shape.IsNull()) builder.Add(compound, shape);
+            run.edges += static_cast<int>(part.edges.size());
+            run.vertices += static_cast<int>(part.points.size());
+            if (!part.shape.IsNull() && (!part.edges.empty() || !part.points.empty()))
+                builder.Add(compound, part.shape);
         }
     }
     run.totalMilliseconds = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - start).count();
 
-    TopTools_IndexedMapOfShape edges, vertices;
-    TopExp::MapShapes(compound, TopAbs_EDGE, edges);
-    TopExp::MapShapes(compound, TopAbs_VERTEX, vertices);
-    run.edges = edges.Extent();
-    run.vertices = vertices.Extent();
     if (run.edges > 0 || run.vertices > 0) run.shape = compound;
     return run;
 }

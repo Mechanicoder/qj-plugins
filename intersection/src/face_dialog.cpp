@@ -261,7 +261,7 @@ void FaceIntersectionDialog::run()
                                       translateX_->value(), translateY_->value(), translateZ_->value());
         updateResult(result);
 
-        QString text = QStringLiteral("面 A %1 个 / 面 B %2 个；交线：%3 条边，%4 个顶点；"
+        QString text = QStringLiteral("面 A %1 个 / 面 B %2 个；交线：%3 条边，%4 个孤立交点；"
                                       "成功配对 %5，失败 %6，跳过 %7；总耗时 %8 ms（内核 %9 ms）。")
             .arg(static_cast<int>(group_.firstFaces.size()))
             .arg(static_cast<int>(group_.secondFaces.size()))
