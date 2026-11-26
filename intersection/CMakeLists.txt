@@ -9,27 +9,30 @@ else()
     include(FetchContent)
     FetchContent_Declare(SoulCAD
         GIT_REPOSITORY https://github.com/Mechanicoder/SoulCAD.git
-        GIT_TAG 20a8876dd7a7186492326a85a24921dfff1a29fc
+        GIT_TAG dac5ffc3fee6bce5ab8a9bf8e93a8c51b8b18371
         GIT_SHALLOW TRUE
         GIT_PROGRESS TRUE
         SOURCE_SUBDIR kernels/smlib)
     FetchContent_MakeAvailable(SoulCAD)
-    # 上游 RefineOnKnots 会把次数更高的端点重数插入低次曲线，OCC 越界写导致
-    # 堆损坏；在配置阶段幂等地应用本地补丁。
-    set(_qjcam_soulcad_patch "${CMAKE_SOURCE_DIR}/cmake/patches/soulcad_refine_multiplicity.patch")
-    if(EXISTS "${_qjcam_soulcad_patch}")
-        execute_process(COMMAND git apply --reverse --check "${_qjcam_soulcad_patch}"
-            WORKING_DIRECTORY "${soulcad_SOURCE_DIR}"
-            RESULT_VARIABLE _qjcam_patch_applied OUTPUT_QUIET ERROR_QUIET)
-        if(NOT _qjcam_patch_applied EQUAL 0)
-            execute_process(COMMAND git apply "${_qjcam_soulcad_patch}"
+    # 上游新代码使用 OCCT 8.0 的 NCollection_Array1 接口（按尺寸构造、双参
+    # Resize、At），宿主为 7.9.2，配置阶段幂等应用兼容补丁。
+    set(_qjcam_soulcad_patches
+        "${CMAKE_SOURCE_DIR}/cmake/patches/soulcad_occt79_compat.patch")
+    foreach(_qjcam_patch IN LISTS _qjcam_soulcad_patches)
+        if(EXISTS "${_qjcam_patch}")
+            execute_process(COMMAND git apply --reverse --check "${_qjcam_patch}"
                 WORKING_DIRECTORY "${soulcad_SOURCE_DIR}"
-                RESULT_VARIABLE _qjcam_patch_result)
-            if(NOT _qjcam_patch_result EQUAL 0)
-                message(FATAL_ERROR "无法应用 SoulCAD 面面求交补丁：${_qjcam_soulcad_patch}")
+                RESULT_VARIABLE _qjcam_patch_applied OUTPUT_QUIET ERROR_QUIET)
+            if(NOT _qjcam_patch_applied EQUAL 0)
+                execute_process(COMMAND git apply "${_qjcam_patch}"
+                    WORKING_DIRECTORY "${soulcad_SOURCE_DIR}"
+                    RESULT_VARIABLE _qjcam_patch_result)
+                if(NOT _qjcam_patch_result EQUAL 0)
+                    message(WARNING "SoulCAD 兼容补丁未应用（可能上游已兼容）：${_qjcam_patch}")
+                endif()
             endif()
         endif()
-    endif()
+    endforeach()
 endif()
 
 qjcam_add_plugin(intersection

@@ -1,0 +1,30 @@
+diff --git a/kernels/smlib/intersect_face_face.cpp b/kernels/smlib/intersect_face_face.cpp
+index 1473d49..634fe15 100644
+--- a/kernels/smlib/intersect_face_face.cpp
++++ b/kernels/smlib/intersect_face_face.cpp
+@@ -305,9 +305,12 @@ NCollection_Array1<double> CommonFairnessKnots(const Geom_BSplineCurve& first, c
+     const auto first_end = first_knots.begin() + (first.LastUKnotIndex() - first_knots.Lower() + 1);
+     const auto second_begin = second_knots.begin() + (second.FirstUKnotIndex() - second_knots.Lower());
+     const auto second_end = second_knots.begin() + (second.LastUKnotIndex() - second_knots.Lower() + 1);
+-    NCollection_Array1<double> partition(static_cast<size_t>((first_end - first_begin) + (second_end - second_begin)));
++    const int count = static_cast<int>((first_end - first_begin) + (second_end - second_begin));
++    if (count < 1)
++        return NCollection_Array1<double>();
++    NCollection_Array1<double> partition(1, count);
+     const auto end = std::set_union(first_begin, first_end, second_begin, second_end, partition.begin());
+-    partition.Resize(static_cast<size_t>(end - partition.begin()), true);
++    partition.Resize(1, static_cast<int>(end - partition.begin()), true);
+     return partition;
+ }
+ 
+@@ -3838,8 +3841,8 @@ void TestSmlibRefitFairnessPartition()
+ 
+     RefineOnKnots(*cubic, quintic);
+     const auto partition = CommonFairnessKnots(*cubic, quintic);
+-    if (cubic->NbKnots() != 3 || partition.Size() != 4 || partition.At(0) != 0 ||
+-        partition.At(1) != .25 || partition.At(2) != .75 || partition.At(3) != 1 ||
++    if (cubic->NbKnots() != 3 || partition.Size() != 4 || partition.Value(1) != 0 ||
++        partition.Value(2) != .25 || partition.Value(3) != .75 || partition.Value(4) != 1 ||
+         !MeasureFairness(*cubic, partition).valid || !MeasureFairness(quintic, partition).valid ||
+         MeasureFairness(quintic, cubic->Knots()).valid)
+         throw std::runtime_error("refit fairness must split at both curves' knots even when refinement is skipped");
