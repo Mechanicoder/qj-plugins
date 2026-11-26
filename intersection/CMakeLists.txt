@@ -14,6 +14,22 @@ else()
         GIT_PROGRESS TRUE
         SOURCE_SUBDIR kernels/smlib)
     FetchContent_MakeAvailable(SoulCAD)
+    # 上游 RefineOnKnots 会把次数更高的端点重数插入低次曲线，OCC 越界写导致
+    # 堆损坏；在配置阶段幂等地应用本地补丁。
+    set(_qjcam_soulcad_patch "${CMAKE_SOURCE_DIR}/cmake/patches/soulcad_refine_multiplicity.patch")
+    if(EXISTS "${_qjcam_soulcad_patch}")
+        execute_process(COMMAND git apply --reverse --check "${_qjcam_soulcad_patch}"
+            WORKING_DIRECTORY "${soulcad_SOURCE_DIR}"
+            RESULT_VARIABLE _qjcam_patch_applied OUTPUT_QUIET ERROR_QUIET)
+        if(NOT _qjcam_patch_applied EQUAL 0)
+            execute_process(COMMAND git apply "${_qjcam_soulcad_patch}"
+                WORKING_DIRECTORY "${soulcad_SOURCE_DIR}"
+                RESULT_VARIABLE _qjcam_patch_result)
+            if(NOT _qjcam_patch_result EQUAL 0)
+                message(FATAL_ERROR "无法应用 SoulCAD 面面求交补丁：${_qjcam_soulcad_patch}")
+            endif()
+        endif()
+    endif()
 endif()
 
 qjcam_add_plugin(intersection
@@ -75,4 +91,19 @@ if(QJCAM_BUILD_INTERSECTION_TESTS)
     set_target_properties(intersection-face-tests PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreadedDLL
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
     qjcam_use_smlib(intersection-face-tests)
+
+    add_executable(mech1106-repro
+        tests/mech1106_repro.cpp
+        src/face_realtime.cpp)
+    target_compile_features(mech1106-repro PRIVATE cxx_std_17)
+    target_compile_options(mech1106-repro PRIVATE /utf-8)
+    target_include_directories(mech1106-repro PRIVATE src)
+    target_link_libraries(mech1106-repro PRIVATE Qjcam::SDK SoulCAD::SmlibFaceIntersection
+        "${QJCAM_OCC_DIR}/lib/TKBRep.lib" "${QJCAM_OCC_DIR}/lib/TKTopAlgo.lib"
+        "${QJCAM_OCC_DIR}/lib/TKBO.lib" "${QJCAM_OCC_DIR}/lib/TKBool.lib"
+        "${QJCAM_OCC_DIR}/lib/TKGeomAlgo.lib" "${QJCAM_OCC_DIR}/lib/TKGeomBase.lib"
+        "${QJCAM_OCC_DIR}/lib/TKG3d.lib" dbghelp.lib)
+    set_target_properties(mech1106-repro PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreadedDLL
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tests/$<CONFIG>")
+    qjcam_use_smlib(mech1106-repro)
 endif()

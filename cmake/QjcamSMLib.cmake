@@ -1,5 +1,9 @@
 include_guard(GLOBAL)
 
+# TBB 的导入目标只提供 Debug/Release；RelWithDebInfo 默认会选中 Debug 版
+# （tbb12_debug.dll），映射到 Release 以保证部署运行时一致。
+set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO "Release")
+
 # 预编译包按 OCCT 8.0.0 ABI 构建，而 QJCAM 26Q1 使用 OCCT 7.9.2；
 # 因此直接使用包内源码，基于宿主 OCC 重新编译，保持 ABI 一致。
 set(QJCAM_OCCSMBRIDGE_ROOT
@@ -29,6 +33,7 @@ add_subdirectory("${_qjcam_bridge_source}" "${CMAKE_BINARY_DIR}/thirdparty/OccSm
 
 function(qjcam_use_smlib target)
     target_link_libraries(${target} PRIVATE OccSmBridge::Native)
+    target_link_directories(${target} PRIVATE "${TBB_ROOT}/lib")
     # The SDK headers mark consumers dllexport. Use the bridge's private import
     # view instead of accidentally re-exporting SMLib classes from the plugin.
     occ_sm_bridge_smlib_imports(${target})
