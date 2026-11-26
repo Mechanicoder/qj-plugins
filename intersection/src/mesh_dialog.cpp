@@ -127,6 +127,7 @@ MeshIntersectionDialog::MeshIntersectionDialog(QWidget* parent) : QDialog(parent
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     auto* runButton = buttons->addButton(QStringLiteral("求交"), QDialogButtonBox::ActionRole);
+    auto* saveButton = buttons->addButton(QStringLiteral("保存交线"), QDialogButtonBox::ActionRole);
     auto* clearButton = buttons->addButton(QStringLiteral("清除"), QDialogButtonBox::ResetRole);
     layout->addWidget(buttons);
 
@@ -136,6 +137,7 @@ MeshIntersectionDialog::MeshIntersectionDialog(QWidget* parent) : QDialog(parent
 
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(runButton, &QPushButton::clicked, this, &MeshIntersectionDialog::run);
+    connect(saveButton, &QPushButton::clicked, this, &MeshIntersectionDialog::saveResult);
     connect(clearButton, &QPushButton::clicked, this, &MeshIntersectionDialog::reset);
     connect(resetMove, &QPushButton::clicked, this, [this] {
         suppressUpdates_ = true;
@@ -224,6 +226,31 @@ void MeshIntersectionDialog::reset()
     clearOutput();
     clear(meshes_);
     setStatus(QStringLiteral("请选择面 A、面 B（可多选）后点击“求交”。"));
+}
+
+void MeshIntersectionDialog::saveResult()
+{
+    if (!resultNode_) {
+        setStatus(QStringLiteral("当前没有可保存的交线，请先求交。"));
+        return;
+    }
+    const TopoDS_Shape shape = qjcam::MO_GetShape(resultNode_);
+    if (shape.IsNull()) {
+        setStatus(QStringLiteral("当前交线为空，无法保存。"));
+        return;
+    }
+    static int serial = 0;
+    const QString name = QStringLiteral("网格求交交线 %1").arg(++serial);
+    qjcam::ModelHandle saved = qjcam::MO_AddShape(name.toUtf8().constData(), shape);
+    if (!saved) {
+        setStatus(QStringLiteral("保存失败：请确认已打开工程。"));
+        return;
+    }
+    qjcam::MO_SetShapeColor(saved, 0xff8800);
+    qjcam::MO_SetShapeTransparency(saved, 0.0);
+    removeResult(); // 保存后删除临时节点，避免重复显示。
+    setStatus(QStringLiteral("已保存到模型树：%1").arg(name));
+    qjcam::VI_UpdateView();
 }
 
 void MeshIntersectionDialog::scheduleUpdate()

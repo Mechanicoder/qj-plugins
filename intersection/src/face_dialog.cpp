@@ -121,6 +121,8 @@ FaceIntersectionDialog::FaceIntersectionDialog(QWidget* parent) : QDialog(parent
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     auto* runButton = buttons->addButton(QStringLiteral("求交"), QDialogButtonBox::ActionRole);
+    auto* saveButton = buttons->addButton(QStringLiteral("保存交线"), QDialogButtonBox::ActionRole);
+    auto* caseButton = buttons->addButton(QStringLiteral("生成测例"), QDialogButtonBox::ActionRole);
     auto* clearButton = buttons->addButton(QStringLiteral("清除"), QDialogButtonBox::ResetRole);
     layout->addWidget(buttons);
 
@@ -130,6 +132,8 @@ FaceIntersectionDialog::FaceIntersectionDialog(QWidget* parent) : QDialog(parent
 
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(runButton, &QPushButton::clicked, this, &FaceIntersectionDialog::run);
+    connect(saveButton, &QPushButton::clicked, this, &FaceIntersectionDialog::saveResult);
+    connect(caseButton, &QPushButton::clicked, this, &FaceIntersectionDialog::saveTestCase);
     connect(clearButton, &QPushButton::clicked, this, &FaceIntersectionDialog::reset);
     connect(resetMove, &QPushButton::clicked, this, [this] {
         suppressUpdates_ = true;
@@ -217,6 +221,91 @@ void FaceIntersectionDialog::reset()
     clearOutput();
     clear(group_);
     setStatus(QStringLiteral("请选择面 A、面 B（可多选）后点击“求交”。"));
+}
+
+void FaceIntersectionDialog::saveResult()
+{
+    if (!resultNode_) {
+        setStatus(QStringLiteral("当前没有可保存的交线，请先求交。"));
+        return;
+    }
+    const TopoDS_Shape shape = qjcam::MO_GetShape(resultNode_);
+    if (shape.IsNull()) {
+        setStatus(QStringLiteral("当前交线为空，无法保存。"));
+        return;
+    }
+    static int serial = 0;
+    const QString name = QStringLiteral("面面求交交线 %1").arg(++serial);
+    qjcam::ModelHandle saved = qjcam::MO_AddShape(name.toUtf8().constData(), shape);
+    if (!saved) {
+        setStatus(QStringLiteral("保存失败：请确认已打开工程。"));
+        return;
+    }
+    qjcam::MO_SetShapeColor(saved, 0xff8800);
+    qjcam::MO_SetShapeTransparency(saved, 0.0);
+    removeResult(); // 保存后删除临时节点，避免重复显示。
+    setStatus(QStringLiteral("已保存到模型树：%1").arg(name));
+    qjcam::VI_UpdateView();
+}
+
+void FaceIntersectionDialog::saveTestCase()
+{
+    std::vector<TopoDS_Face> first;
+    std::vector<TopoDS_Face> second;
+    if (!readFaces(first, second)) {
+        setStatus(QStringLiteral("请为面 A、面 B 至少各选择一个有效面。"));
+        return;
+    }
+
+    const double tolerance = tolerance_->value();
+    const double angle = angle_->value();
+    if (!group_.ready || !sameFaceLists(group_.firstFaces, first)
+        || !sameFaceLists(group_.secondFaces, second)
+        || group_.tolerance != tolerance || group_.angleTolerance != angle) {
+        std::string error;
+        if (!prepare(first, second, tolerance, angle, group_, error)) {
+            setStatus(QStringLiteral("生成测例失败：%1").arg(QString::fromUtf8(error.c_str())));
+            return;
+        }
+    }
+
+    const bool moveSecond = moveTarget_->currentIndex() == 1;
+    gp_Trsf translation;
+    if (hasOffset())
+        translation.SetTranslation(gp_Vec(translateX_->value(), translateY_->value(), translateZ_->value()));
+    auto placed = [&](const TopoDS_Shape& shape, bool move) {
+        return move ? BRepBuilderAPI_Transform(shape, translation, Standard_False).Shape() : shape;
+    };
+
+    static int serial = 0;
+    const int index = ++serial;
+    const QString params = QStringLiteral("tol=%1，ang=%2°，%3 位移 %4, %5, %6")
+        .arg(tolerance, 0, 'g', 6)
+        .arg(angle, 0, 'g', 6)
+        .arg(moveSecond ? QStringLiteral("B") : QStringLiteral("A"))
+        .arg(translateX_->value(), 0, 'g', 6)
+        .arg(translateY_->value(), 0, 'g', 6)
+        .arg(translateZ_->value(), 0, 'g', 6);
+    const QString prefix = QStringLiteral("面面求交测例 %1").arg(index);
+
+    bool ok = true;
+    auto addShape = [&](const QString& label, const TopoDS_Shape& shape,
+                        unsigned int color, double transparency) {
+        const QString name = QStringLiteral("%1 / %2（%3）").arg(prefix, label, params);
+        qjcam::ModelHandle node = qjcam::MO_AddShape(name.toUtf8().constData(), shape);
+        if (!node) {
+            ok = false;
+            return;
+        }
+        qjcam::MO_SetShapeColor(node, color);
+        qjcam::MO_SetShapeTransparency(node, transparency);
+    };
+    addShape(QStringLiteral("面 A"), placed(group_.firstCompound, !moveSecond), 0x3399ff, 0.35);
+    addShape(QStringLiteral("面 B"), placed(group_.secondCompound, moveSecond), 0xffaa33, 0.35);
+
+    setStatus(ok ? QStringLiteral("已生成测例：%1（%2）").arg(prefix, params)
+                 : QStringLiteral("生成测例失败：请确认已打开工程。"));
+    qjcam::VI_UpdateView();
 }
 
 void FaceIntersectionDialog::scheduleUpdate()

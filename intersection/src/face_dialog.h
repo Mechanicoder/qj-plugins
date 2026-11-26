@@ -26,6 +26,8 @@ public:
 
 private:
     void run();
+    void saveResult();
+    void saveTestCase();
     void scheduleUpdate();
     void invalidate();
     void reset();
